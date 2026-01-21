@@ -1,0 +1,283 @@
+<!--Project webpage for Teensy 4.1 - ADC Module-->
+<!DOCTYPE html>
+<html>
+<head>
+   <title> Teensy 4.1 - ADC Application </title>
+   <link rel="stylesheet" type="text/css" href="styles.css">
+   <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
+</head>
+<body>
+   <h1> How to Configure ADC_ETC in Teensy 4.1 to Acquire ADC Module Samples Synchronized by Hardware Trigger.</h1>
+   <div class="content1">
+       <h3> Motivation and Goal </h3>
+       <ul> 
+          <li> Data acquisition is a very important task, whether for monitoring and supervising a process, for analyzing or processing signals, or even for controlling systems.</li>
+		  <li> Currently, most microcontrollers have multiple channels for acquiring analog signals. Due to the importance of this task, analog-to-digital converter (ADC) modules are becoming increasingly sophisticated, faster, with higher resolution and a greater number of channels, and in many cases, with more than one ADC unit, allowing the simultaneous conversion of two or more channels (depending on the number of ADC units).</li>
+          <li> Despite their inherent advantages, the sophistication of analog-to-digital converters also brings greater programming difficulty. The manuals cover the myriad of details and operational possibilities in a very summarized way, making it a real marathon to understand the module's operation in order to use it satisfactorily in an application. It is common to run test codes in order to truly understand the function of certain configuration bits. In addition to the concise way in which operating manuals present this complex subject, errors are common, such as references to elements of older systems that are no longer present in the unit in question, and even errors in table information that prevent the correct configuration of the module. Obviously, we are talking about hundreds of pages, and eliminating 100% of the errors is an arduous task; therefore, it is to be expected that one or more errors will be present. </li>
+          <li> Of course, we can use libraries if they are available, but often the application requires an operating strategy distinct from the functions available in the library.</li>
+ 	      <li> The purpose of this project is to present to the reader, in the most didactic way possible, how the Teensy 4.1 data acquisition system works. Given the complexity of the subject, it is obviously not intended to answer all questions; therefore, aiming to narrow the scope somewhat, this presentation will focus on the acquisition of specific channels listed in the ADC_ETC module, which, based on the trigger generated in the FlexPWM module, will command the ADC1 module (or also the ADC2) to perform the acquisition sequence. At the end of the acquisition sequence, a hardware interrupt will be requested, and the data will be collected by the respective ISR (Interrupt Service Routine). This acquisition strategy is commonly used by Power Electronics professionals in converter control. In addition to collecting system data, the calculations for the control functions of the power electronics converters are typically fed into the ISR, generating a control action for the system via the FlexPWM that triggered the acquisition. This allows synchronization between sampling and switching, avoiding sampling during the switching instants of the power semiconductor switches, thus reducing electromagnetic interference in the sampled signals. </li>
+          <li> Several devices within the iMXRT1062 (microcontroller used in Teensy 4.1) can generate the hardware trigger for data acquisition. This presentation will use FlexPWM simply because it is the most suitable module for generating PWM signals for controlling converters (optional scope discussed previously). Further details about the FlexPWM module can be found at <a href="https://ernane-aac.github.io/Teensy-4.1-Sinusoidal-Pulse-Width-Modulation/">How to Configure FlexPWM on Teensy 4.1</a>. </li>	
+       </ul>
+    </div>
+    <div class="content2">
+        <h3> Teensy 4.1 Acquisition System </h3>
+		<ul>
+           <li>The Teensy 4.1 has 2 ADC modules, allowing for up to 2 simultaneous conversions if desired for a given application. Each ADC has the following main characteristics: </li>
+		   <ul>
+               <li>Configurable resolution of 8, 10 or 12 bits </li>
+			   <li>According to [1], up to 10 ENOB (Effective Number of Bits - resolution in a real-world, considering imperfections like ADC errors, noise and distortion) </li>
+			   <li>Up to 1MS/s sampling rate </li>
+			   <li>Up to 16 single-ended external analog inputs</li>
+			   <li>Hardware average function - The ADC module automatically calculates the average for 4, 8, 16, or 32 samples	 </li>
+			   <li>Self-calibration mode </li>			   
+		   </ul>			   
+           <li>Despite each ADC module having 16 analog inputs, 12 of these inputs are common to both modules, resulting in 20 independent analog inputs. Of these 20 independent analog inputs on the iMXRT1062 microcontroller, 18 are available on the Teensy 4.1 pins (A0 to A17). </li>
+           <li>Analog inputs are connected directly to the GPIO pins; they do not go through the GPIO pin multiplexing system to avoid noise and signal distortion. Since the default GPIO configuration implies the activation of the keeper, it is recommended in [1] that the keeper be deactivated before starting the ADC. </li> 
+		   <li>Fig. 1 shows a simplified diagram of the Teensy 4.1 acquisition system. The ADC modules are independent and can be operated directly by the CPU in the case of simple software-requested sampling. </li>
+           <li>In the case of a sequence of acquisitions composed of a list of channels to be triggered by hardware, as proposed in this presentation, the ADC modules will be controlled by the ADC_ETC (ADC External Trigger Control) module. As can be seen in Fig. 1, from a trigger signal received by the ADC_ETC via XBAR (a module with an array of multiplexers that allows configuring different connection paths between modules internal to the microcontroller and between internal modules and GPIO), it will command one or both ADC modules to provide the specified acquisition sequence.</li>
+        </ul>
+        <figure>
+           <img src="Analog_Module_Simplified_Diagram.png" style="width:30%">
+		   <figcaption>Fig. 1 - Simplified Diagram of the Teensy 4.1 Acquisition System - adapted from [1]</figcaption>
+        </figure>
+	    <ul>
+            <li>Several modules internal to the microcontroller, such as the PIT (Periodic Interrupt Timer), QTimer (Quad Timer), and eFlexPWM (Enhanced Flex Pulse Width Modulator), can generate hardware acquisition triggers, in addition to signals applied to a GPIO pin. The desired hardware trigger source must be connected to the ADC_ETC via the XBAR1 module configuration.</li>			
+	        <li>Figure 2 illustrates how the chosen trigger signal reaches the ADC_ETC module. The ADC_ETC module has 8 distinct trigger signals, 4 for triggering ADC1 and 4 for triggering ADC2. In the case of simultaneous acquisitions, the trigger signals from ADC1 can simultaneously trigger ADC2, in a configurable operating option defined as synchronous mode. Each trigger signal in the ADC_ETC constitutes an output of the XBAR1 module, as can be seen in Table 4-8, XBAR1 Output Assignments, page 71 of [1].  </li>   
+            <li>As shown in Fig. 2, each output of the XBAR1 linked to an ADC_ETC trigger has a selection field, integrated into a specific XBAR1 register, in which the trigger signal source will be configured. The list of XBAR1 input options that can be connected to a specific output is presented in Table 4-5, XBAR1 Input Assignments, page 61 of [1]. Obviously, only signals that make sense as triggers for ADC_ETC should be connected.The list of registers containing the input selection fields for each XBAR1 output can be found starting on page 3310 of [1]. As an example, the trigger signal ADC_ETC_TRIG00 is linked to the XBAR1_OUT103 output. Since there are 2 selection fields per 32-bit register, 103/2=51 with a remainder of 1, thus the field to configure this output is in the upper word of the Crossbar A Select Register 51 (XBARAx_SEL51), page 3339 of [1]. </li> 
+           	<li>It is important to note that the trigger signals generated by the FlexPWM module (FLEXPWMx_PWMy_OUT_TRIG0 and FLEXPWMx_PWMy_OUT_TRIG1, 2 trigger signals for each submodule y within the module x) are connected to the same XBAR1 input via an OR logic operation, that is, if both signals are enabled in the submodule y of the module x, there will be two triggers per PWM cycle (double sampling). </li> 
+            <li>At this point, an important observation should be made regarding a material error in the documentation presented in [1]. Through the execution of the codes presented below, it was observed that trigger signals of the FlexPWM4 module, submodule 2, are actually linked to the XBAR1_IN54 input and not to the XBAR1_IN53 input as shown in Table 4-5, XBAR1 Input Assignments, page 61 of [1]. </li>	
+     	</ul>
+        <figure>
+            <img src="ADC_ETC_to_ADCn_trigger_input.png" style="width:80%">
+		    <figcaption>Fig. 2 - XBAR1-ADC_ETC-ADC1_ADC2 Integration Scheme </figcaption>
+        </figure>		
+	    <ul>
+            <li>Upon receiving the trigger signal, the ADC_ECT will command the entire acquisition sequence. At the end of each sample acquisition within the sequence, the respective acquisition result is transferred from the ADCx_Rn register of the ADC to the ADC_ETC_TRIGx_RESULT_m_n register of the ADC_ETC, according to the sequence's programming order. At the end of the sequence execution, one of three interrupts (done0, done1, or done2) will be requested according to the configuration.  </li>
+            <li>Since there are 8 trigger signals, it is possible to program up to 8 acquisition sequences with distinct triggers (up to 4 per ADC module), with up to 8 channels in each sequence. With the three end-of-sequence interrupt options (done0, done1, and done2), it is possible to coordinate up to 3 sequences in 3 distinct triggers without sharing the same interrupt request, eliminating the need to verify who requested the interrupt within the ISR. </li>
+			<li>The ADC_ETC also has an error interrupt. If the ADC_ETC receives an external trigger during an ongoing acquisition sequence, the error interrupt will be requested. Note that this interrupt cannot be enabled/disabled internally in the ADC_ETC because there is no specific enable bit for it, like we have for done0, done1 and done2 interrupt. When installing the respective ISR, the corresponding IRQ must be enabled in the NVIC (Nested Vectored Interrupt Controller). </li>
+     	</ul>			
+        <br>		
+    </div>		
+	<div class="content3">
+        <h3> Configuration Procedure for ADC, ADC_ETC, and FlexPWM Modules for Hardware-Triggered Sequence Acquisition</h3>
+		<p>In the programming procedure for the ADC, ADC, ETC, and FlexPWM modules presented below, some programming examples (command lines in C language) use definitions and macros found in the imxrt.h file. </p>
+        <p>The reader should pay attention to the details of the code. It is common to use the "Read-Modify-Write" strategy using the OR operator (|=) in command lines. This allows the programmer to organize the code and act on the same register at different points, separating the bit configuration by related instances, even if they are in different registers. On the other hand, care must be taken with the reset of flags that use the "write 1 to clear" strategy, as an undesirable flag reset can occur if the OR operator is used. </p>
+	    <ol>
+            <li> ADC Module Configuration (both modules must be configured if applicable) </li>
+            <ol type="a">
+                <li>Disable the keeper for the analog inputs to be used. In this example: </li>		
+                <ul style="list-style-type: none">
+                   <li>IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B1_02 &= ~(1 &lt;&lt 12);  // Disable Keeper for A0 (GPIO_AD_B1_02) </li>
+				   <li>IOMUXC_SW_PAD_CTL_PAD_GPIO_AD_B1_03 &= ~(1 &lt;&lt 12);  // Disable Keeper for A1 (GPIO_AD_B1_03) </li>
+				   <li>Disable the keeper for all analog inputs used. </li>
+				   <li>In the code example shown below, only channel A0 is used.</li>
+                </ul>				   
+                <li>Enable the IPG clock for the ADC module. As an example for ADC1: CCM_CCGR1 |= CCM_CCGR1_ADC1(CCM_CCGR_ON);   </li>
+			    <li>Select ADC Conversion Clock - There is a trade-off between the ADC clock frequency, which impacts conversion speed, and the accuracy of the resulting measurement. Increasing the frequency increases the conversion speed, but reduces the accuracy of the analog-to-digital conversion. Just as a reference, considering ADC clock at 20MHz, the reference voltage (VDDAD) at 3.0 V, temperature at 25°C and an average of 32 samples, a typical ENOB of 10.7 is obtained [2]. It is important to note that the maximum ADC clock frequency is 40MHz [2]. Note that in Teensy 4.1, VDDAD is connected to 3.3V. In the code examples shown below, the Asynchronous clock (ADACK = 20 MHz) is selected. </li>
+			    <li>Select high speed conversion (HSC=1). This will keep the ADACK at 20MHz. As instance, ADC1_CFG |= ADC_CFG_ADHSC;   </li>
+			    <li>Make sure Low Power mode is not enabled:  ADC1_CFG &= ~(ADC_CFG_ADLPC). For a given output impedance of the signal conditioning circuit, enabling Low Power mode increases the time required for proper sampling [2]. </li>
+                <li>Select the ADC resolution mode, 8, 10, or 12-bits: ADC1_CFG |= ADC_CFG_MODE(2); // MODE = 0b10 -> 12-bit conversion </li>
+				<li>Select short sample mode for a higher sampling rate: ADC1_CFG &= ~(ADC_CFG_ADLSMP). In this case, the output impedance of the signal conditioning circuit must be low. When activated, this bit significantly increases the sampling time. This applies to signal conditioning circuits with high impedance and lower sampling rates. </li>
+				<li>Specify the sampling time in number of ADC clock periods. In this project, 7 ADC clock periods were used: ADC1_CFG |= ADC_CFG_ADSTS(2); // Set STS=0b10 => Sample period (ADC clocks) = 7 if ADLSMP=0b => 1/20MHz*7= 350ns. </li>				
+				<li>Select trigger by hardware: ADC1_CFG |= ADC_CFG_ADTRG . This is the correct option, as ADC_ETC will send the hardware trigger signals to the ADC. </li>				
+				<li>Make sure the ADC is not in continuous conversion mode: ADC1_GC &= ~(ADC_GC_ADCO). The ADC will wait for trigger signals from ADC_ETC to perform the conversions. </li>
+				<li>In this example, the average calculation will not be used: ADC1_GC &= ~(ADC_GC_AVGE). If it is used, configure the number of samples for the average calculation in the ADC1_CFG register, for example: ADC1_CFG |= ADC_CFG_AVGS(3);// 32 samples averaged. </li>	
+				<li>Configure all Control registers for hardware triggers (ADCx_HCn) used in sequence configuration to 16 (0x10). This tells the ADC module that the external channel to be sampled will be selected by ADC_ETC. </li>				
+		    </ol> 
+			<li> Calibrate the ADC module. </li>
+			<ol type="a">
+		  	    <li>Before the calibration process, the ADC module parameters relating to the clock source and frequency, power consumption mode, voltage reference selection, sampling time, averaging calculation, and high-speed configuration must be in accordance with the application [1].  </li>
+		  	    <li>Ensure that the ADTRG bit is set to 0 (software trigger selected) in the ADCx_CFG register; otherwise, the calibration process will fail. Since this application refers to a hardware trigger (ADTRG=1), temporarily change the ADTRG bit to 0 until the calibration process is complete. </li>	
+		  	    <li>To start the calibration, set the CAL bit in the ADCx_GC register.  </li>	
+		  	    <li>Wait for CAL bit becomes '0' then check the CALF (Calibration Failed Flag) status in ADCx_GS register.</li>	
+                <li>The calibration process is automatically controlled by the ADC once the CAL bit is set, and must be executed before each code operation session. The calibration result is updated internally and made available for informational purposes in the ADCx_CAL register.</li>
+		  	    <li>Since calibration is a process that involves triggering, waiting for completion, and verifying success, the corresponding code snippet involves a sequence of steps which, within an appropriate programming criterion, integrate more than mere lines of register configuration. Therefore, it was decided not to present individual command lines here; the reader should observe the calibration routine included in the code examples presented below. </li>					
+		    </ol>			   
+            <li> ADC_ETC Module Configuration </li>
+			<ol type="a">
+                <li>Reset the ADC_ETC module. Since this process involves writing to the SOFTRST bit of the ADC_ETC Global Control Register and there is no way to verify if the process has completed, as is the case in the ADC calibration process, It is recommended that the CPU wait for this process to complete. See an example of how this process can be commanded in the code example below.  </li>
+                <li>In some tests performed, failures were common at the beginning of the ADC1-ADC_ETC communication. Therefore, as a precaution, as can be seen in the example code, the ADC_coco flags (conversion complete flags) were reset at this point by reading all the result registers of ADC1. This is a sort of ADC1 reset. </li>                
+                <li>According to the chosen ADCT_ETC trigger, specify in the respective TRIGx_CTRL register the number of channels to be sampled in the sequence. TRIG_CHAIN = n implies (n+1) channels. In this presentation, the ADC_ETC trigger0 will be used with a sequence composed of 4 channels: ADC_ETC_TRIG0_CTRL = (ADC_ETC_TRIG_CTRL_TRIG_CHAIN(3)). </li>
+                <li>Configure the sequence or sequences if more than one ADC_ETC trigger is used. This presentation shows the configuration of only one sequence for ADC_ETC Trigger0. The sequence for the ADC_ETC trigger0 is specified in the ADC_ETC_TRIG0_CHAIN_x_y registers, two channels per register. For a 4-channel sequence, we have:  </li>
+                <ul style="list-style-type: none">
+                   <li>   ADC_ETC_TRIG0_CHAIN_1_0 =  </li>
+                   <ul style="list-style-type: none">
+				      <li><table>
+				            <tr><td>ADC_ETC_TRIG_CHAIN_HWTS0(1 &lt;&lt 0)  </td> <td>|&nbsp;&nbsp;// LOWER WORD: Target ADC1 Slot 0 (HC0) for first sample                     </td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_CSEL0(A0)           </td> <td>|&nbsp;&nbsp;//             Sample A0 (A0 is a macro name defined before - Hardware Channel 7)</td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_IE0(0)              </td> <td>|&nbsp;&nbsp;//             No interrupt after first sample                                   </td></tr>
+                            <tr><td> </td><td> </td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_B2B1                </td> <td>|&nbsp;&nbsp;// Start this second conversion immediately after adc_coco (conversion complete flag) from first conversion </td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_HWTS1(1 &lt;&lt 1)  </td> <td>|&nbsp;&nbsp;// UPPER WORD: Target ADC1 Slot 1 (HC1) for second sample    </td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_CSEL1(A1)           </td> <td>|&nbsp;&nbsp;//             Sample A1 (A1 is a macro name defined before - Hardware Channel 8)</td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_IE1(0))             </td> <td>;&nbsp;&nbsp;//             No interrupt after second sample              </td></tr>
+                          </table></li>
+				   </ul>	  
+                   <li> </li>
+                   <li>  ADC_ETC_TRIG0_CHAIN_3_2 =  </li>
+                   <ul style="list-style-type: none">
+				      <li><table>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_B2B0                </td> <td>|&nbsp;&nbsp;// Start this third conversion immediately after adc_coco (conversion complete flag) from second conversion </td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_HWTS0(1 &lt;&lt 2)  </td> <td>|&nbsp;&nbsp;// LOWER WORD: Target ADC1 Slot 2 (HC2) for third sample     </td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_CSEL0(A2)           </td> <td>|&nbsp;&nbsp;//             Sample A2 (A2 is a macro name defined before - Hardware Channel 12)</td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_IE0(0)              </td> <td>|&nbsp;&nbsp;//             No interrupt after  third sample              </td></tr>
+                            <tr><td> </td><td> </td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_B2B1                </td> <td>|&nbsp;&nbsp;// Start this fourth conversion immediately after adc_coco (conversion complete flag) from third conversion </td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_HWTS1(1 &lt;&lt 3)  </td> <td>|&nbsp;&nbsp;// LOWER WORD: Target ADC1 Slot 3 (HC3) for fourth sample    </td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_CSEL1(A3)           </td> <td>|&nbsp;&nbsp;//             Sample A3 (A3 is a macro name defined before - Hardware Channel 11)</td></tr>
+                            <tr><td>ADC_ETC_TRIG_CHAIN_IE1(1)              </td> <td>;&nbsp;&nbsp;//             Interrupt (Done0) at the end of fourth sample </td></tr>
+                          </table></li>
+			       </ul>
+                   <li>Some information regarding the presented sequence configuration is important:</li>
+                   <ul>
+				      <li>Triggers 0, 1, 2, and 3 internal to the ADC were used; that is, slots 0, 1, 3, and 3 were programmed in the HWTS (ADC hardware trigger selection) bits of the sequence configuration registers. This means that the corresponding ADC_HCn registers internal to the ADC must be configured to 0x10. It is possible to reuse the same trigger, so the same slot could be used for the entire sequence.	</li>
+                      <li>As soon as the ADC receives the first trigger from the ADC_ETC, it initiates the sampling and conversion process of the first channel in the sequence. However, for the remaining channels in the sequence, it is important to specify the B2B bit (Back to Back ADC trigger) in the ADC_ETC_TRIG0_CHAIN_x_y register. Normally, B2B=1 is used; that is, as soon as the ADC_ETC receives the ADCxCOCOn signal (Conversion Complete Flags in ADCx_HS), it sends the trigger signal for the next conversion. If B2B=0 is configured, the ADC_ETC will not wait for the conversion complete signal; it will send the trigger for the next acquisition as soon as the sample interval expires. Therefore, the sample interval must necessarily be configured in the ETC_TRIGx Counter Register (in this example, ADC_ETC_TRIG0_COUNTER). The default value for the sample interval time is zero, so if B2B=0, the next trigger will be sent immediately after the current trigger and the current acquisition will not be performed (result register = 0x0000). Note that a sample interval time greater than the time required for sampling and conversion must be specified. In this presentation, B2B = 1 was configured.  </li>
+                      <li>In the case of specifying the sample interval time, such as in the ADC_ETC_TRIG0_COUNTER register, don't forget to set the pre-scale value in the ADC_ETC_CTRL register. </li>      
+                	  <li>In the example given, the `done0` interrupt was configured at the end of the sequence. It is possible, for example, to configure up to 3 sequences with distinct interrupts (`done0`, `done1`, and `done2`). From there, the IRQs must be shared, requiring verification of the respective flag within the ISR for proper data handling.  </li>          
+             		  <li>An interrupt can be specified before the end of the sequence, but this is not usual, since the respective ISR would have very little time to process anything and could delay the execution of the end-of-sequence interrupt, in the case of using a different IRQ, or it could generate problems identifying the order of calls to the same IRQ. Typically, a single interrupt is enabled at the end of the sequence.  </li>
+                      <li>It is possible to specify any channels in any order in the list of channels that make up the sequence, including repeating channels. In the results presented below, to reduce the laboratory resources used in the test, only one voltage sensor and its respective signal conditioning circuit were used in the lab, connected to channel A0. Thus, the channel list consisted of 4 sequential readings from channel A0. </li>
+			       </ul>					  
+                </ul>               
+                <li>Install the ISR for end of sequence and enable the corresponding IRQ flag in NVIC. In this example, the done0 interrupt was used. </li>				
+                <ul style="list-style-type: none">
+                   <li>attachInterruptVector(IRQ_ADC_ETC0, &amp;adc_etc_done0_isr); </li>
+                   <li>NVIC_SET_PRIORITY(IRQ_ADC_ETC0, 0x80); //medium priority level - Level 8 out of 15 (16 levels) </li>
+                   <li>NVIC_ENABLE_IRQ(IRQ_ADC_ETC0); </li>				   
+                </ul>	
+                <li>Install the ISR for ADC_ETC error handling and enable the corresponding IRQ flag in NVIC. </li>	
+                <ul style="list-style-type: none">
+                   <li>attachInterruptVector(IRQ_ADC_ETC_ERR, &amp;adc_etc_error_isr); </li>
+                   <li>NVIC_SET_PRIORITY(IRQ_ADC_ETC_ERR, 0x90); </li>
+                   <li> NVIC_ENABLE_IRQ(IRQ_ADC_ETC_ERR); //Level 9 out of 15 (16 levels)</li>				   
+                </ul>	
+                <ul style="list-style-type: none">
+				<li>Note: Within the ISR related to the ADC_ECT error interrupt, in addition to resetting the interrupt flag and signaling the main code of the existence of an error situation, modifying a variable, read all internal result registers ADCx_Rn to reset the ADCx_coco flags (conversion complete flags). </li>	
+                </ul>
+                <li>Enable the trigger and triggers to be used by ADC_ECT in the ADC_ETC_CTRL register. In the example adopted, only trigger0 will be enabled: ADC_ETC_CTRL |= ADC_ETC_CTRL_TRIG_ENABLE(1 &lt;&lt 0).  </li>				
+            </ol>
+			<li> XBAR1 Module Configuration </li>
+			<ol type="a">			
+			    <li>Enable Clock for XBARA1: CCM_CCGR2 |= CCM_CCGR2_XBAR1(CCM_CCGR_ON).</li>
+				<li>Route the trigger connection on XBAR1. In the example adopted in this presentation, the trigger signals FlexPWM4_SM2_TRIG0 OR FLEXPWM4_PWM2_OUT_TRIG1 (XBAR1_IN54) will be routed to ADC_ETC_TRIG00 (XBAR1_OUT103). Thus, in the input selection register for output XBAR1_OUT103 select XBAR1_IN54: XBAR1_SEL51 |= (54 &lt;&lt 8). Note that the selection field of interest is in the upper byte. As mentioned earlier, such trigger signals are incorrectly listed for input XBAR1_IN53, Table 4-5. - XBAR1 Input Assignments, page 62 of [1].  </li>
+			</ol>
+            <li> FlexPWM Module Configuration </li>	
+			<ol type="a">			
+                <li>Configure a FlexPWM PWM module to generate trigger signals according to the application. It is common in power electronics converter control applications to use a FlexPWM module to control the power flow to the converter output and synchronously trigger the acquisition system to read the variables to be fed back. Since there is a huge range of applications, this presentation will focus only on the important details for generating the trigger signal. More details can be found at <a href="https://ernane-aac.github.io/Teensy-4.1-Sinusoidal-Pulse-Width-Modulation/">How to Configure FlexPWM on Teensy 4.1</a></li>		
+                <li>Enable Clock for FlexPWM Module. In this example the FlexPWM4 is used: CCM_CCGR4 |= CCM_CCGR4_PWM4(CCM_CCGR_ON). </li>	
+                <li>Select FlexPWM clock source. In this example, the IPG clock (150MHz) is selected for submodule 2 of FlexpWM 4: FLEXPWM4_SM2CTRL2 = FLEXPWM_SMCTRL2_CLK_SEL(0). </li>
+                <li>Define the prescale (division factor for the clock). In this example, divide by 1: FLEXPWM4_SM2CTRL = FLEXPWM_SMCTRL_PRSC(0) </li>				
+                <li>Define counter range: </li> 
+                <ul style="list-style-type: none">	
+                   <li>Following the example presented in <a href="https://ernane-aac.github.io/Teensy-4.1-Sinusoidal-Pulse-Width-Modulation/">How to Configure FlexPWM on Teensy 4.1</a>, and considering TOP=6250, we will have a carrier frequency equal to 12kHz:</li>
+                   <li>FLEXPWM4_SM2INIT = -TOP; // Carrier BOTTOM </li> 
+                   <li>FLEXPWM4_SM2VAL0 = 0; </li>
+                   <li>FLEXPWM4_SM2VAL1 = TOP-1 //Carrier TOP - For TOP= 6250  => Freq_carrier = IPG_CLk/prescaler/counting steps => 150MHz/1/(2*6250)= 12kHz</li> 				
+                </ul>				
+                <li>Enable the FlexPWM trigger(s) as desired for the application. In this example, both triggers will be enabled: FlexPWM4-SM2 trigger0 and FlexPWM4-SM2 trigger1: </li>
+                <ul style="list-style-type: none">	
+                   <li>FLEXPWM4_SM2TCTRL |= (FLEXPWM_SMTCTRL_OUT_TRIG_EN(1 &lt;&lt 0) | FLEXPWM_SMTCTRL_OUT_TRIG_EN(1 &lt;&lt 1)); </li> 
+                   <li>Note: As can be seen on page 3169 of [1], FlexPWMnSMm_TRIG0 and FlexPWMnSMm_TRIG1 can be activated at specific points within the PWM cycle, determined by the VALk comparison registers. In the example shown, trigger0 was selected when the counter matches the value in VALO (half cycle) and trigger1 when the counter matches the value in VAL1 (full cycle). This represents two samples per PWM cycle, implying a sampling frequency (24kHz) twice the carrier frequency (12kHz). </li>
+                </ul>				   
+                <li>Whenever the comparison registers (VALk) are changed, remember to load them, as the comparison registers are buffered and will only take effect after LDOK is activated to load the values internally into the PWM generating unit. <br> In this example: FLEXPWM4_MCTRL |= FLEXPWM_MCTRL_LDOK(1 &lt;&lt 2). </li>  				
+                <li>Start the counter for the internal FlexPWM submodule being used. In this example: FLEXPWM4_MCTRL |= FLEXPWM_MCTRL_RUN(1 &lt;&lt 2); </li>	
+                <ul style="list-style-type: none">	
+                   <li>Notes:</li>
+				   <ul>	
+                   <li>The steps above constitute the minimum configurations for generating a trigger corresponding to double sampling per PWM cycle. Further configurations will depend on the application. </li>				   
+                   <li>In the code examples shown below, for illustrative purposes only, in addition to generating a trigger for the ADC_ETC, a sinusoidal pulse width modulation was generated at the PWMA output of submodule 2 of the FLEXPWM 4 module (PWMB will be a complementary signal of PWMA).</li>
+				   </ul>
+                </ul>				   
+           </ol>				
+		</ol>
+        <br>		
+    </div>
+	<div class="content4">
+        <h3> Results for an Acquisition Sequence in ADC1 via Hardware Trigger </h3>
+		<ul>
+           <li> An example of code for acquiring a sequence of channels using ADC1 with a hardware trigger is shown below (Code1). The hardware trigger is generated by submodule 2 of FlexPWM 4. The results presented in this Section were obtained using this code. </li>
+           <li> To facilitate signal manipulation, an expansion board was used, as shown in Fig. 3. The analog input circuit in the expansion boad  features protection diodes to protect the analog input against voltages outside the 0 to 3.3 V range. Additionally, there is an external capacitor (3n3F) coupled to act as a "charge reservoir," rapidly distributing the charge with the sample-and-hold capacitor, speeding up the sampling process. The scheme of the analog input circuit can be seen in Fig. 4.  </li>
+		   <li> The voltage sensor used in the tests is the same one shown in <a href="https://ernane-aac.github.io/RMS-Voltage-Measurement/">RMS Voltage Measurement Using Arduino UNO</a>. Only the input resistors of the differential amplifier were changed to 3x270k, resulting in an attenuation of -47.8 dB (x0.00407). This means that a maximum RMS voltage of 286 V (3*270/3.3*1.65/sqrt(2)) can be applied to the voltage sensor without compromising the analog input of the system.</li>		   
+		<table>
+          <tr>
+		    <td>
+               <figure>
+                  <img src="Teensy_41_Expansion_Board.jpg" style="width:70%">
+		          <figcaption>Fig. 3 - Teensy 4.1 Expansion Board.</figcaption>
+              </figure>
+			</td>
+			<td>
+              <figure>
+                 <img src="Analog_input_circuit_scheme.png" style="width:50%">
+		         <figcaption>Fig. 4 - Analog Input Circuit Scheme.</figcaption>
+              </figure>
+			</td>
+		  <tr>
+		</table>
+        <br>
+           <li> Figures 5 and 6 show the acquisition of a phase voltage (131.6V) and a line voltage (225.1V) from a three-phase system at a sampling rate of 24kHz, 400 points per period of 60Hz (grid frequency). </li>	
+           <li> As can be seen in Figures 5 and 4, the 4 acquisitions are practically superimposed with the presence of some voltage spikes. It is important to emphasize that the internal averaging calculation in ADC1 was disabled. Each point on the curve corresponds to a single sample. </li>
+           <li> It should be considered that more important than the values obtained (quantitative analysis) is the waveform obtained (qualitative analysis) in these tests, since a simple external calibration was performed with only two values ​​and a common voltmeter. Ideally, a more precise measuring instrument should be used and a multipoint calibration performed as presented in <a href="https://ernane-aac.github.io/RMS-Voltage-Measurement/">RMS Voltage Measurement Using Arduino UNO</a>.</li>	
+		<table>
+          <tr>
+		    <td>
+               <figure>
+                  <img src="Result_4xCh_ADC1_131_6V.png" style="width:70%">
+		          <figcaption>Fig. 5 - Acuisition Result - 4xChannel A: phase voltage of 131.6V - <span class="cBlue-text">Va</span>, <span class="tRed-text">Vb</span>,<span class="orange-text">Vc</span> and <span class="rPurple-text">Vd</span>.</figcaption>
+              </figure>
+			</td>
+			<td>
+              <figure>
+                 <img src="Result_4xCh_ADC1_225_1V.png" style="width:70%">
+		         <figcaption>Fig. 6 - Acuisition Result - 4xChannel A: line voltage of 225.1V - <span class="cBlue-text">Va</span>, <span class="tRed-text">Vb</span>,<span class="orange-text">Vc</span> and <span class="rPurple-text">Vd</span>.</figcaption>
+              </figure>
+			</td>
+		  <tr>
+		</table>
+        <br>		
+		   <li> Figure 7 shows the PWM output signal seen on an oscilloscope through a low-pass filter corresponding to two cascaded RC sections (R=4k99; C=10nF), which implies a cutoff frequency of 3189.5 Hz and a carrier attenuation of approximately -35.1dB (x0.0176) at 24kHz, disregarding the loading of one section on the other. </li>		
+		   <li> As can be seen in Fig. 7, the sinusoidal signal has a frequency of 60Hz, as established in the code.		
+		<ul>
+        <br>		
+        <figure>
+            <img src="sinusoidal_signal_oscilloscope.png" style="width:60%">
+		    <figcaption>Fig. 7 - Sinusoidal signal seen on the oscilloscope.</figcaption>
+        </figure>		
+        <br>		
+    </div>
+	<div class="content5">
+        <h3> Results for an Acquisition Sequence in ADC1 and ADC2 (Sync Mode) via Hardware Trigger </h3>
+		<ul>
+		   <li> Under construction </li>		
+		</ul>
+        <br>
+	</div>
+	<div class="content6">
+        <h3> Observations and Recommendations </h3>
+		<ul>		
+            <li> If you intend to use an external power source for the Teensy 4.1 (as used with the expansion board, Fig. 4), remember to open the connection between the V_in and V_USB pads [3]. </li>
+            <li> Using an external power supply, assuming a good quality one, can be more advantageous than using USB power, as this option results in a higher quality reference voltage for the ADCx.</li>			
+            <li> When connecting signals to the Teensy 4.1, remember that the Teensy 4.1 pins are not 5V tolerant [3]. </li>
+            <li> Using Teensyduino-style code makes life easier for the user by simplifying some details, but in some cases this can be a problem. Some strange FlexPWM operations were identified in relation to the register reset condition presented in the manual [1], suggesting that these registers were modified during the startup process. Anyway, some of them were reconfigured to the reset value. Some comments are presented in codes 1 (see below). </li>				
+            <li> The results presented in this project were generated using the code shown below, but it is important to emphasize that the device configuration subroutines may not produce the expected results in other applications. The Teensy 4.1 microcontroller manual is vague in its description of the modules and does not provide consistent examples. The code presented is a combination of several individual tests, but there are no guarantees that the configuration subroutines will meet the requirements of any application.</li>
+            <li>A more interesting option than the one presented here for data collection is DMA (Direct Memory Access) transfer. However, this was left for another project, aiming to maintain focus on the acquisition system and one of the hardware-based trigger generation methods. DMA is more efficient because it transfers the acquisition results directly to memory via dedicated hardware, freeing the CPU for other tasks instead of interrupting them and leaving them idle to handle data transfers by accessing the result registers.</li>
+		</ul>			   
+		<br>
+	</div>		
+	<div class="content7">
+        <h3 id="Links">Links </h3>
+		<ul> 
+		   <li><a href="https://github.com/Ernane-AAC/Teensy-4.1-Sinusoidal-Pulse-Width-Modulation/tree/main/Teensy_41_Test_Carrier_FlexPWM4SM2_CLK_by_FlexPWM1SM3_ino"> Code 1: Complete Teensyduino-style code for acquiring a 4-channel sequence using the Teensy 4.1 ADC1.</a></li>		   
+	       <li><a href="https://ernane-aac.github.io/RMS-Voltage-Measurement/">RMS Voltage Measurement Using Arduino UNO</a></li>
+		</ul>
+        <br>		
+	</div>
+	<div class="content8">
+        <h3> References </h3>
+        <p>[1] i.MX RT1060 Processor Reference Manual, Rev. 3, 07/2021, NXP Semiconductors.</p>
+        <p>[2] i.MX RT1060 Crossover Processors for Consumer Products, Rev. 4, 04/2024, NXP Semiconductors.</p>
+		<p>[3] <a href="https://www.pjrc.com/store/teensy41.html">PJRC Electronics Projects - Teensy® 4.1 Development Board</a></p>
+		<p>[4] <a href="https://ernane-aac.github.io/Teensy-4.1-Sinusoidal-Pulse-Width-Modulation/">How to Configure FlexPWM on Teensy 4.1</a></p>
+		<br>
+	</div>			
+</body>
+</html>
