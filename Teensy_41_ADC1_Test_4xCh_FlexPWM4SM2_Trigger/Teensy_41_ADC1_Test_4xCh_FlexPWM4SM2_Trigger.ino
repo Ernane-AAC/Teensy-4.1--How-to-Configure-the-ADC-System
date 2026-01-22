@@ -491,9 +491,9 @@ void init_ADC_ETC(void) {
 // IMPORTANT NOTE: If B2B is set for all segments of the chain above (except the first), there is no need to configure the sampling interval. 
 //                 If B2B = 0 for any segment other than the first, the sampling interval must be adjusted to a delay greater than the total
 //                  sampling time (sampling time + conversion time). In this example, the choice was made to set B2B.
-//ADC_ETC_CTRL |= ADC_ETC_CTRL_PRE_DIVIDER(0);   // configure pre_divider = 0 (8-bits) for initial delay and sample interval
+//ADC_ETC_CTRL |= ADC_ETC_CTRL_PRE_DIVIDER(1);   // configure pre_divider = 1 (8-bits) for initial delay and sample interval
 //ADC_ETC_TRIG0_COUNTER =   ADC_ETC_TRIG_COUNTER_INIT_DELAY(0) |       // Initial_delay (16-bits) = (INIT_DELAY+1)*(PRE_DIVIDER+1)*ipg_clk
-//                          ADC_ETC_TRIG_COUNTER_SAMPLE_INTERVAL(100); // Interval_delay = (SAMPLE_INTERVAL+1)*(PRE_DIVIDER+1)*ipg_clk
+//                          ADC_ETC_TRIG_COUNTER_SAMPLE_INTERVAL(136); // Interval_delay = (SAMPLE_INTERVAL+1)*(PRE_DIVIDER+1)*ipg_clk
 
   // Install the ISR to IRQ 118 (Done0)
   attachInterruptVector(IRQ_ADC_ETC0, &adc_etc_done0_isr); 
