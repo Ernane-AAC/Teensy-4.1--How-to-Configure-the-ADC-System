@@ -262,7 +262,7 @@
 	<div class="content6">
         <h3> Observations and Recommendations </h3>
 		<ul>		
-            <li> If you intend to use an external power source for the Teensy 4.1 (as used with the expansion board, Fig. 4), remember to open the connection between the V_in and V_USB pads [3]. </li>
+            <li> If you intend to use an external power source for the Teensy 4.1 (as used with the expansion board, Fig. 3), remember to open the connection between the V_in and V_USB pads [3]. </li>
             <li> Using an external power supply, assuming a good quality one, can be more advantageous than using USB power, as this option results in a higher quality reference voltage for the ADCx.</li>			
             <li> When connecting signals to the Teensy 4.1, remember that the Teensy 4.1 pins are not 5V tolerant [3]. </li>
             <li> Using Teensyduino-style code makes life easier for the user by simplifying some details, but in some cases this can be a problem. Some strange FlexPWM operations were identified in relation to the register reset condition presented in the manual [1], suggesting that these registers were modified during the startup process. Anyway, some of them were reconfigured to the reset value. Some comments are presented in codes 1 (see below). </li>				
