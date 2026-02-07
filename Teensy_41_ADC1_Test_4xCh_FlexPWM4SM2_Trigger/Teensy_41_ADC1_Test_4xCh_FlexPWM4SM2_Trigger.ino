@@ -136,7 +136,7 @@ void adc_etc_error_isr()
 
     ADC1_Clear_Coco(); //Clear ADC1 Conversion Complete Flags
 
-    // Clear the Done0 Interrupt Flag (Write 1 to Clear)
+    // Clear the Trigger0 ERR Interrupt Flag (Write 1 to Clear)
     ADC_ETC_DONE2_ERR_IRQ = ADC_ETC_DONE2_ERR_IRQ_TRIG_ERR(0);
 
     asm volatile ("dsb");  // Data Synchronization Barrier -> This forces the CPU to wait until the peripheral really clears its interrupt flag,
