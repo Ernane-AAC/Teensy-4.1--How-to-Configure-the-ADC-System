@@ -255,8 +255,42 @@
 	<div class="content5">
         <h3> Results for an Acquisition Sequence in ADC1 and ADC2 (Sync Mode) via Hardware Trigger </h3>
 		<ul>
-		   <li> Under construction </li>		
-		</ul>
+		   <li> This section will show you how to configure ADC_ETC for simultaneous acquisitions using ADC1 and ADC2. </li>
+		   <li> To perform simultaneous data acquisition between ADC1 and ADC2, both converters must be pre-programmed as specified in item 1 of the procedure presented in the section "Configuration Procedure for ADC, ADC_ETC, and FlexPWM Modules for Hardware-Triggered Sequence Acquisition".</li>
+		   <li> To configure ADC_ETC, we follow essentially the same steps as in item 3 of the Configuration Procedure for ADC, ADC_ETC, and FlexPWM Modules for Hardware-Triggered Sequence Acquisition section, except for the following observations:</li>	
+		   <ul>
+		      <li> As can be seen on page 3459 of [1], the default option is for the ADC to be controlled by the TSC (Touch Screen Controller), so to use ADC2 the TSC_BYPASS bit must be reset in the ADC_ETC_CTRL register: </li>	
+                 <ul style="list-style-type: none">
+			  		  <li> ADC_ETC_CTRL &amp;= ~ADC_ETC_CTRL_TSC_BYPASS; </li>	
+		         </ul>
+			  <li>Just as with ADC1, the acquisition sequence for ADC2 must be specified. Depending on the application, you can use different interrupts (done0, done1, or done2) for each sequence. In the case of multiple acquisitions for each ADC, the observations regarding the BSB bit presented in the previous procedure should also be considered here. Note that the chain specifications for ADC1 are performed in the registers corresponding to trigger0 to trigger3, and for ADC2 they are performed in the registers corresponding to trigger4 to trigger7. </li>	
+		      <li>In the control register of trigger_x or in the control register of trigger_x+4, or in both (it doesn't matter), the operation must be specified in synchronous mode to provide simultaneous acquisition:</li>
+                 <ul style="list-style-type: none">
+			  		  <li>   ADC_ETC_TRIG0_CTRL = ADC_ETC_TRIG_CTRL_SYNC_MODE; // or   </li>
+			  		  <li>   ADC_ETC_TRIG4_CTRL = ADC_ETC_TRIG_CTRL_SYNC_MODE; // considering trigger0 (ADC1) and trigger4 (ADC2) as examples</li>					  
+		         </ul>
+		      <li>In the code example shown below (Code2), only 2 channels will be sampled: one voltage channel (A0) and one current channel (A1), to be acquired by ADC1 and ADC2, respectively. In this case, each sequence presents only 1 segment. Only the `done0` interruption will be considered for reading and storing the samples. </li>			  
+		      <li>As noted in [1], when configuring synchronous mode, trigger_x will operate in conjunction with trigger_x+4, and the trigger request is granted only when both ADC modules are in the IDLE state. However, [1] does not clearly describe what happens after sampling begins. Considering that the ADC modules are independent, even with synchronized triggering, there is no guarantee that both will finish the acquisition process at the same instant (considering the same clock configuration and sampling time). Thus, as can be seen in the code below (Code2), both interrupt flags are checked within the ISR before reading. This time difference should be negligible, so the wait loop inserted in the ISR should not significantly impact the operation of the code.  </li>
+           </ul>
+		   <li> The acquisition results shown below consider the same voltage sensor used in previous results connected to channel A0 and a Hall effect current sensor (ACS758LCB-050B) connected to channel A1. 1600 samples were acquired on each channel at a sampling rate of 24kHz. The conversion coefficients for Volts and Amperes were obtained via multipoint calibration and configured in Code2. The internal averaging calculation of the ADC converters was not used; therefore, each point corresponds to a single sample.</li>
+		   <li> Figures 8 and 9 show the voltage and current acquired, respectively. A 2000W heat gun was used as the load, which represents practically a unity power factor load, with the current having a waveform practically identical to that of the voltage.</li>		   		   
+        </ul>
+		<table class="fixed-size-table"">
+          <tr>
+		    <td>
+               <figure>
+                  <img src="Result_ADC1_A0_Voltage_1600samples.png" style="width:70%">
+		          <figcaption>Fig. 8 - Acuisition Result - Channel A0: line voltage of 207.8 Vrms - 1600 samples - Sampling rate of 24kHz.  </figcaption>
+              </figure>
+			</td>
+			<td>
+              <figure>
+                 <img src="Result_ADC2_A1_Current_1600samples.png" style="width:70%">
+		         <figcaption>Fig. 9 - Acuisition Result - Channel A1: Load Current - 2000W heat gun - 1600 samples - Sampling rate of 24kHz. </figcaption>
+              </figure>
+			</td>
+		  <tr>
+		</table>
         <br>
 	</div>
 	<div class="content6">

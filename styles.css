@@ -12,12 +12,18 @@ figure {
   margin: auto;
 }
 
-/* Style for table1 */
-.table1 td, .table1 th {
-  border: 2px solid;
-  text-align: left;
-  padding: 8px;
-}
+/* Style for table */
+  .fixed-size-table {
+    width: 90%; 
+    table-layout: fixed;
+    border-collapse: collapse; /* Optional: for cleaner borders */
+  }
+
+  .fixed-size-table td {
+    text-align: center; /* Optional: center content */
+  }
+
+
 
 /* Colors for text */
     .cBlue-text {
