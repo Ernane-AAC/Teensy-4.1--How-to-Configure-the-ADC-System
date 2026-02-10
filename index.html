@@ -259,7 +259,7 @@
 		   <li> To perform simultaneous data acquisition between ADC1 and ADC2, both converters must be pre-programmed as specified in item 1 of the procedure presented in the section "Configuration Procedure for ADC, ADC_ETC, and FlexPWM Modules for Hardware-Triggered Sequence Acquisition".</li>
 		   <li> To configure ADC_ETC, we follow essentially the same steps as in item 3 of the Configuration Procedure for ADC, ADC_ETC, and FlexPWM Modules for Hardware-Triggered Sequence Acquisition section, except for the following observations:</li>	
 		   <ul>
-		      <li> As can be seen on page 3459 of [1], the default option is for the ADC to be controlled by the TSC (Touch Screen Controller), so to use ADC2 the TSC_BYPASS bit must be reset in the ADC_ETC_CTRL register: </li>	
+		      <li> As can be seen on page 3459 of [1], the default option is for the ADC2 to be controlled by the TSC (Touch Screen Controller), so to use ADC2 the TSC_BYPASS bit must be reset in the ADC_ETC_CTRL register: </li>	
                  <ul style="list-style-type: none">
 			  		  <li> ADC_ETC_CTRL &amp;= ~ADC_ETC_CTRL_TSC_BYPASS; </li>	
 		         </ul>
