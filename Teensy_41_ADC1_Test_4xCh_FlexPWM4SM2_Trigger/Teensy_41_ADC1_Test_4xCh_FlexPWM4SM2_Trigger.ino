@@ -429,7 +429,7 @@ void ADC1_Calibrate(void) {
        else
              {
                uint32_t cal_code = (ADC1_CAL & 0x0F);
-               Serial.println("The ADC1 calibration process was was completed successfully!");
+               Serial.println("The ADC1 calibration process was completed successfully!");
                Serial.print("CAL_CODE = ");
                Serial.println(cal_code);
              }
